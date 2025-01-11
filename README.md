@@ -49,6 +49,18 @@ cmake -DCMAKE_INSTALL_PREFIX=/usr -DODROID_N2=1 ..
 make
 sudo make install
 ```
+### Raspberry Pi Running AstroArch
+If you're building on [AstroArch](https://github.com/devDucks/astroarch)/Arch Linux, you will need to install libgpiod verson 1.6.x from source. The following commands will build and install v1.6.5 with C++ bindings.
+```
+cd ~
+git clone https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git
+cd libgpiod
+git checkout v1.6.5
+./autogen.sh --enable-tools=yes --enable-bindings-cxx --prefix=/usr
+make
+sudo make install
+```
+You may also need to install g++ and cmake using pacman, see https://wiki.archlinux.org/title/C and https://wiki.archlinux.org/title/Pacman. Once you have libgpiod installed, cd to the build directory crated above and build this driver using the commands for Raspberry Pi. If you get errors involving `std::filesystem` during compilation, try changing `set(CMAKE_CXX_STANDARD 14)` to `set(CMAKE_CXX_STANDARD 17)` in indi-wmh-focuser/CMakeLists.txt.
 ## Running KStars remotely
 If you're going to run KStars on a computer other than your Raspberry Pi, then you need to install an XML file to the computer with KStars. Open KStars, go to Settings, then Configure KStars, then go down to INDI. There will be an entry titled "INDI Drivers XML Directory". That directory is where you will want to copy the indi_wmh_focuser.xml file. On my Windows machine, that location is "C:/Users/Kevin/AppData/Local/indi"
 
