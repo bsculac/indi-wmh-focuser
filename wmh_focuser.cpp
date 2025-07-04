@@ -123,7 +123,7 @@ bool IndiWMHFocuser::Disconnect()
     if (FocusParkingSP[0].s == ISS_ON)
     {
         IDMessage(getDeviceName(), "Waveshare Motor HAT Focuser is parking...");
-        MoveAbsFocuser(FocusAbsPosN[0].min);
+        MoveAbsFocuser(FocusAbsPosNP[0].getMin());
     }
 
     // make sure stepper motor is released
@@ -159,7 +159,7 @@ bool IndiWMHFocuser::initProperties()
     // set default values
     _dir = FOCUS_OUTWARD;
 
-    FocusAbsPosN[0].value = _loadPosition();
+    FocusAbsPosNP[0].setValue(_loadPosition());
     
     return true;
 }
@@ -239,10 +239,10 @@ bool IndiWMHFocuser::ISNewSwitch(const char *dev, const char *name, ISState *sta
         {
             FocusResetSP.update(states, names, n);
 
-            if (FocusResetSP[0].getState() == ISS_ON && FocusAbsPosN[0].value == FocusAbsPosN[0].min)
+            if (FocusResetSP[0].getState() == ISS_ON && FocusAbsPosNP[0].getValue() == FocusAbsPosNP[0].getMin())
             {
-                FocusAbsPosN[0].value = (int)FocusMaxPosN[0].value / 100;
-                IDSetNumber(&FocusAbsPosNP, NULL);
+                FocusAbsPosNP[0].setValue((int)FocusMaxPosNP[0].getValue() / 100);
+                FocusAbsPosNP.apply();
                 MoveAbsFocuser(0);
             }
 
@@ -283,14 +283,14 @@ bool IndiWMHFocuser::ISNewSwitch(const char *dev, const char *name, ISState *sta
 }
 bool IndiWMHFocuser::saveConfigItems(FILE *fp)
 {
-    IUSaveConfigNumber(fp, &PresetNP);
+    PresetNP.save(fp);
     MotorSpeedNP.save(fp);
     FocusBacklashNP.save(fp);
     FocusParkingSP.save(fp);
     BoardRevisionSP.save(fp);
 
     if (FocusParkingSP[0].getState() == ISS_ON)
-        IUSaveConfigNumber(fp, &FocusAbsPosNP);
+        FocusAbsPosNP.save(fp);
 
     return INDI::Focuser::saveConfigItems(fp);
 }
@@ -325,14 +325,14 @@ void IndiWMHFocuser::_savePosition(uint32_t pos)
 
 IPState IndiWMHFocuser::MoveAbsFocuser(uint32_t targetTicks)
 {
-    if (targetTicks == FocusAbsPosN[0].value)
+    if (targetTicks == FocusAbsPosNP[0].getValue())
         return IPS_OK;
         
     if (!_gotoAbsolute(targetTicks))
         return IPS_ALERT;
 
-    FocusRelPosNP.s = IPS_BUSY;
-    IDSetNumber(&FocusRelPosNP, nullptr);
+    FocusRelPosNP.setState(IPS_BUSY);
+    FocusRelPosNP.apply();
 
     return IPS_BUSY;
 }
@@ -345,24 +345,24 @@ IPState IndiWMHFocuser::MoveRelFocuser(FocusDirection dir, uint32_t ticks)
         return IPS_OK;
         
     if (dir == FOCUS_INWARD)
-        newPosition = FocusAbsPosN[0].value - ticks;
+        newPosition = FocusAbsPosNP[0].getValue() - ticks;
     else
-        newPosition = FocusAbsPosN[0].value + ticks;
+        newPosition = FocusAbsPosNP[0].getValue() + ticks;
 
     // Clamp
-    newPosition = std::max(0, std::min(static_cast<int32_t>(FocusAbsPosN[0].max), newPosition));
+    newPosition = std::max(0, std::min(static_cast<int32_t>(FocusAbsPosNP[0].getMax()), newPosition));
     if (!_gotoAbsolute(newPosition))
         return IPS_ALERT;
 
-    FocusRelPosN[0].value = ticks;
-    FocusRelPosNP.s       = IPS_BUSY;
+    FocusRelPosNP[0].setValue(ticks);
+    FocusRelPosNP.setState(IPS_BUSY);
 
     return IPS_BUSY;
 }
 
 bool IndiWMHFocuser::_gotoAbsolute(uint32_t targetTicks)
 {
-    if (targetTicks < FocusAbsPosN[0].min || targetTicks > FocusAbsPosN[0].max)
+    if (targetTicks < FocusAbsPosNP[0].getMin() || targetTicks > FocusAbsPosNP[0].getMax())
     {
         IDMessage(getDeviceName(), "Requested position is out of range.");
         return false;
@@ -380,15 +380,15 @@ bool IndiWMHFocuser::_gotoAbsolute(uint32_t targetTicks)
         FocusDirection lastDir = _dir;
         
         // set direction
-        if (targetPos > FocusAbsPosN[0].value)
+        if (targetPos > FocusAbsPosNP[0].getValue())
         {
             _dir = FOCUS_OUTWARD;
-            IDMessage(getDeviceName(), "Waveshare Motor HAT Focuser is moving outward by %u steps", abs((int)targetPos - (int)FocusAbsPosN[0].value));
+            IDMessage(getDeviceName(), "Waveshare Motor HAT Focuser is moving outward by %u steps", abs((int)targetPos - (int)FocusAbsPosNP[0].getValue()));
         }
         else
         {
             _dir = FOCUS_INWARD;
-            IDMessage(getDeviceName(), "Waveshare Motor HAT Focuser is moving inward by %u steps", abs((int)targetPos - (int)FocusAbsPosN[0].value));
+            IDMessage(getDeviceName(), "Waveshare Motor HAT Focuser is moving inward by %u steps", abs((int)targetPos - (int)FocusAbsPosNP[0].getValue()));
         }
 
         auto dir = _dir == FOCUS_OUTWARD ? Motor::Direction::Backward : Motor::Direction::Forward;
@@ -403,14 +403,14 @@ bool IndiWMHFocuser::_gotoAbsolute(uint32_t targetTicks)
         _motor->Enable(dir);
 
         // if direction changed do backlash adjustment - TO DO
-        if (FocusBacklashNP[0].getValue() != 0 && lastDir != _dir && FocusAbsPosN[0].value != 0)
+        if (FocusBacklashNP[0].getValue() != 0 && lastDir != _dir && FocusAbsPosNP[0].getValue() != 0)
         {
             IDMessage(getDeviceName(), "Waveshare Motor HAT Focuser backlash compensation by %d steps...", (int)FocusBacklashNP[0].getValue());
             for (int i = 0; i < FocusBacklashNP[0].getValue() * MICROSTEPPING; i++)
                 _motor->SingleStep(_usPerStep);
         }
 
-        uint32_t currentPos = FocusAbsPosN[0].value;
+        uint32_t currentPos = FocusAbsPosNP[0].getValue();
         
         // GO
         while (currentPos != targetPos && !_abort)
@@ -422,19 +422,19 @@ bool IndiWMHFocuser::_gotoAbsolute(uint32_t targetTicks)
             
             if (currentPos % 50 == 0)
             {
-                FocusAbsPosN[0].value = currentPos;
-                FocusAbsPosNP.s = IPS_BUSY;
-                IDSetNumber(&FocusAbsPosNP, nullptr);
+                FocusAbsPosNP[0].setValue(currentPos);
+                FocusAbsPosNP.setState(IPS_BUSY);
+                FocusAbsPosNP.apply();
             }            
         }
         _motor->Disable();
 
         // update abspos value and status
-        FocusAbsPosN[0].value = currentPos;
-        FocusAbsPosNP.s = IPS_OK;
-        IDSetNumber(&FocusAbsPosNP, "Waveshare Motor HAT Focuser moved to position %d", (int)currentPos);
-        FocusRelPosNP.s = IPS_OK;
-        IDSetNumber(&FocusRelPosNP, nullptr);
+        FocusAbsPosNP[0].setValue(currentPos);
+        FocusAbsPosNP.setState(IPS_OK);
+        FocusAbsPosNP.apply("Waveshare Motor HAT Focuser moved to position %d", (int)currentPos);
+        FocusRelPosNP.setState(IPS_OK);
+        FocusRelPosNP.apply();
         
         _savePosition(currentPos);
     }, targetTicks);
@@ -444,17 +444,17 @@ bool IndiWMHFocuser::_gotoAbsolute(uint32_t targetTicks)
 
 bool IndiWMHFocuser::SyncFocuser(uint32_t targetTicks)
 {
-    if (targetTicks < FocusAbsPosN[0].min || targetTicks > FocusAbsPosN[0].max)
+    if (targetTicks < FocusAbsPosNP[0].getMin() || targetTicks > FocusAbsPosNP[0].getMax())
     {
         IDMessage(getDeviceName(), "Requested position is out of range.");
         return false;
     }
     
     // update abspos value and status
-    FocusAbsPosN[0].value = targetTicks;
-    IDSetNumber(&FocusAbsPosNP, "Waveshare Motor HAT Focuser synced to position %d", (int)FocusAbsPosN[0].value);
-    FocusAbsPosNP.s = IPS_OK;
-    IDSetNumber(&FocusAbsPosNP, NULL);
+    FocusAbsPosNP[0].setValue(targetTicks);
+    FocusAbsPosNP.apply("Waveshare Motor HAT Focuser synced to position %d", (int)FocusAbsPosNP[0].getValue());
+    FocusAbsPosNP.setState(IPS_OK);
+    FocusAbsPosNP.apply();
     
     _savePosition(targetTicks);
     return IPS_OK;
